@@ -2,6 +2,7 @@
 from discord.ext import commands, tasks
 import discord 
 import random
+import datetime
 
 SPAWN_CHANNEL_ID = 1423174402673086467  # <<< You MUST replace this number!
 
@@ -9,19 +10,19 @@ COLLECTIBLE_DATA = [
     {
         "name": "Disco Rat",
         "rarity": "Rare",
-        "image_url": "", # Placeholder URL
+        "image_url": "", 
         "catch_rate": 45
     },
     {
         "name": "Quantum Rat",
         "rarity": "Legendary",
-        "image_url": "", # Placeholder URL
+        "image_url": "", 
         "catch_rate": 5
     },
     {
         "name": "Rat",
         "rarity": "Common",
-        "image_url": "", # Placeholder URL
+        "image_url": "", 
         "catch_rate": 90
     }
 ]
@@ -29,11 +30,17 @@ COLLECTIBLE_DATA = [
 class Spawning(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+        # Access the database connection and cursor from the bot instance
+        self.conn = bot.db_connection
+        self.cursor = bot.db_cursor
+
         self.active_rat = None # This variable can track the rat that's currently spawned in the chat
 
         # Starts the loop as soon as the bot connects
         self.spawn_collectible.start() 
 
+    # ----------------- COLLECTIBLE SPAWNING -----------------
     @tasks.loop(seconds=20) # Adjust the interval as needed
     async def spawn_collectible(self):
         """The main loop that handles collectible spawning."""
@@ -55,15 +62,10 @@ class Spawning(commands.Cog):
             )
 
             embed.set_image(url=collectible['image_url'])
-            embed.set_footer(text=f"Rarity: {collectible['rarity']} | Capture Rate: {collectible['catch_rate']}%")
+            embed.set_footer(text=f"Rarity: {collectible['rarity']} | Quick! Type sc~capture to take a photo!")
 
             # Send a test message asynchronously
             await channel.send(embed=embed)
-
-    @commands.command(name='spawninfo')
-    async def spawn_info(self, ctx):
-        """A simple test command for the cog."""
-        await ctx.send("Spawning Cog is active and running!")
 
     # Define a command to capture the rat and add it to the user's collection
     @commands.command(name='capture')
@@ -77,18 +79,22 @@ class Spawning(commands.Cog):
 
         caught_rat = self.active_rat  # The rat the user is trying to catch
 
-        '''Capture Logic: Chance-based capture based on the rat's catch rate'''
-        rate = self.active_rat['catch_rate']
-        roll = random.randint(1, 100)
+        '''Capture Logic'''
+        caught_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        user_id = ctx.author.id
+        item_name = caught_rat['name']
 
-        if roll <= rate:
-            # Capture successful
-            await ctx.send(f"🎉 {ctx.author.mention} has successfully snapped a photo of {caught_rat['name']}!")
-        else:
-            # Capture failed
-            await ctx.send(f"😢 {ctx.author.mention} failed to snap a photo of {caught_rat['name']}. The rat ran away!")
+        sql = "INSERT INTO rats (user_id, rat_name, captured_at) VALUES (?, ?, ?)"
+        self.cursor.execute(sql, (user_id, item_name, caught_time))
+        self.conn.commit()
 
+        await ctx.send(f"🎉 {ctx.author.mention} took a photo of {caught_rat['name']}!")
         self.active_rat = None  # Reset the active rat since it has been attempted to be captured
+
+    @commands.command(name='myrats')
+    async def myrats(self, ctx):
+        '''Command to display the user's captured rats.'''
+        await ctx.send(f"Inventory command received for {ctx.author.mention}! (Database lookup will go here)")
 
     def cog_unload(self):
         """Ensures the background task is stopped when the cog is removed."""
@@ -96,5 +102,4 @@ class Spawning(commands.Cog):
 
 # Function to load the cog into the bot (discord automatically looks for this when load_extension is called)
 async def setup(bot):
-    """The required function to load the cog into the bot."""
     await bot.add_cog(Spawning(bot))
