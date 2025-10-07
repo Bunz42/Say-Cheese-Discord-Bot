@@ -9,6 +9,7 @@ class Economy(commands.Cog):
         self.conn =bot.db_connection
         self.c = bot.db_cursor
 
+    # ------------------------------------- DAILY TOKEN CLAIM COMMAND ------------------------------------- #
     @commands.command(name='daily')
     async def daily_claim(self, ctx):
         '''Allows users to claim their fair share of daily currency!'''
@@ -58,13 +59,30 @@ class Economy(commands.Cog):
 
         await ctx.send(f"💰 {ctx.author.mention} Daily Reward claimed! You earned **{reward} currency**. Your new balance is **{new_balance}**.")
 
-    '''Command for the user to check their own balance'''
-    # @commands.command(name='balance', aliases=['bal'])
-    # async def check_balance(self, ctx):
-    #     user_id = ctx.author.id
-    #     self.c.execute("SELECT balance FROM economy WHERE user_id = ?", (user_id,))
-    #     balance = self.c.fetchone()
-    #     await ctx.send(f"💰 {ctx.author.mention} your balance is: {balance}")
+    # ------------------------------------- CHECK BALANCE COMMAND ------------------------------------- #
+    @commands.command(name='balance', aliases=['bal'])
+    async def check_balance(self, ctx):
+        user_id = ctx.author.id
 
+        # Query the database for the user's balance
+        self.c.execute("SELECT balance FROM economy WHERE user_id = ?", (user_id,))
+        balance = self.c.fetchone()
+
+        if balance is None:
+            # User has no record in the economy table
+            return await ctx.send(f"💰 {ctx.author.mention} you have no economy profile yet! Try running 'sc~daily' to create one!")
+
+        balance = balance[0]  # Extract the balance from the tuple (the fetchone() method returns a tuple)
+
+        embed = discord.Embed(
+            title=f"{ctx.author.display_name}'s Balance", 
+            description=f"You have {balance} tokens.",
+            color=discord.Color.green()
+        )
+        embed.set_thumbnail(url=ctx.author.avatar.url if ctx.author.avatar else ctx.author.default_avatar.url)
+        embed.add_field(name="Token Balance", value=f"{balance}", inline=False)
+        await ctx.send(embed=embed)
+
+# ------------------------------------- COG SETUP ------------------------------------- #
 async def setup(bot):
     await bot.add_cog(Economy(bot))
