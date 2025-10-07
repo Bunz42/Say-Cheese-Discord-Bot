@@ -21,16 +21,26 @@ CREATE TABLE IF NOT EXISTS rats (
     captured_at TEXT
 )
 ''')
+
+# Creating the economy table
+db_cursor.execute('''
+CREATE TABLE IF NOT EXISTS economy (
+    user_id INTEGER PRIMARY KEY,
+    balance INTEGER DEFAULT 0
+)
+''')
+
+try:
+    db_cursor.execute("ALTER TABLE economy ADD COLUMN last_claim_time TEXT DEFAULT '2000-01-01 00:00:00'")
+    db_connection.commit()
+    print("Added 'last_claim_time' column to user_economy.")
+except _sqlite3.OperationalError as e:
+    # This error occurs if the column already exists
+    if "duplicate column name" not in str(e):
+        raise
+
+                  
 db_connection.commit()
-
-# print("\n--- INVENTORY CONTENTS CHECK ---")
-# # Execute the select statement
-# db_cursor.execute("SELECT * FROM rats")
-
-# # Loop through all the rows returned and print them
-# for row in db_cursor.fetchall():
-#     print(row)
-# print("--------------------------------\n")
 
 # Defining intents
 intents = discord.Intents.default()
@@ -45,11 +55,13 @@ async def on_ready():
     """Confirms the bot is logged in and ready."""
     print(f'{bot.user.name} has connected to Discord!')
     
-    # NEW: Load our cog right after the bot connects!
     try:
+        # Load the spawning Cog
         await bot.load_extension('cogs.spawning')
-        print("Spawning Cog loaded successfully and DB objects passed!")
+        # Load the economy Cog
+        await bot.load_extension('cogs.economy')
+        print("All Cogs loaded successfully!")
     except Exception as e:
-        print(f"Failed to load Spawning Cog: {e}")
+        print(f"Failed to load a Cog: {e}")
 
 bot.run(TOKEN)
