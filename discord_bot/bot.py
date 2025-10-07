@@ -8,12 +8,13 @@ import _sqlite3
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# -----------------DATABASE SETUP-----------------
+# ------------------------------------- DATABASE SETUP ------------------------------------- #
+
 # Establish a connection to the SQLite database
 db_connection = _sqlite3.connect('rat_collection.db')
 db_cursor = db_connection.cursor()
 
-# Create a table to store captured rats if it doesn't already exist
+# Create a table to store captured rats in rat_collection.db
 db_cursor.execute('''
 CREATE TABLE IF NOT EXISTS rats (
     user_id INTEGER,
@@ -22,7 +23,7 @@ CREATE TABLE IF NOT EXISTS rats (
 )
 ''')
 
-# Creating the economy table
+# Creating the economy table in rat_collection.db
 db_cursor.execute('''
 CREATE TABLE IF NOT EXISTS economy (
     user_id INTEGER PRIMARY KEY,
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS economy (
 )
 ''')
 
+# Adding the last_claim_time column to the economy table
 try:
     db_cursor.execute("ALTER TABLE economy ADD COLUMN last_claim_time TEXT DEFAULT '2000-01-01 00:00:00'")
     db_connection.commit()
@@ -39,8 +41,10 @@ except _sqlite3.OperationalError as e:
     if "duplicate column name" not in str(e):
         raise
 
-                  
+# Commit the changes to the database              
 db_connection.commit()
+
+# ------------------------------------- BOT SETUP ------------------------------------- #
 
 # Defining intents
 intents = discord.Intents.default()
