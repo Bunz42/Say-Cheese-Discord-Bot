@@ -11,19 +11,19 @@ COLLECTIBLE_DATA = [
         "name": "Disco Rat",
         "rarity": "Rare",
         "image_url": "", 
-        "catch_rate": 45
+        "spawn_rate": 0 #temp
     },
     {
         "name": "Quantum Rat",
         "rarity": "Legendary",
         "image_url": "", 
-        "catch_rate": 5
+        "spawn_rate": 0 #temp
     },
     {
         "name": "Rat",
         "rarity": "Common",
         "image_url": "", 
-        "catch_rate": 90
+        "spawn_rate": 0 #temp
     }
 ]
 
@@ -40,7 +40,7 @@ class Spawning(commands.Cog):
         # Starts the loop as soon as the bot connects
         self.spawn_collectible.start() 
 
-    # ----------------- COLLECTIBLE SPAWNING -----------------
+    # ----------------- COLLECTIBLE SPAWNING -------------------
     @tasks.loop(seconds=20) # Adjust the interval as needed
     async def spawn_collectible(self):
         """The main loop that handles collectible spawning."""
@@ -84,6 +84,7 @@ class Spawning(commands.Cog):
         user_id = ctx.author.id
         item_name = caught_rat['name']
 
+        # Handles adding the rat into the user's rat database
         sql = "INSERT INTO rats (user_id, rat_name, captured_at) VALUES (?, ?, ?)"
         self.cursor.execute(sql, (user_id, item_name, caught_time))
         self.conn.commit()
@@ -91,10 +92,40 @@ class Spawning(commands.Cog):
         await ctx.send(f"🎉 {ctx.author.mention} took a photo of {caught_rat['name']}!")
         self.active_rat = None  # Reset the active rat since it has been attempted to be captured
 
-    @commands.command(name='myrats')
-    async def myrats(self, ctx):
+    @commands.command(name='myrats', aliases=['rats'])
+    async def view_rats(self, ctx):
         '''Command to display the user's captured rats.'''
-        await ctx.send(f"Inventory command received for {ctx.author.mention}! (Database lookup will go here)")
+
+        user_id = ctx.author.id
+
+        # SQL Query: Selects item name and counts them, filtered by user ID
+        # ORDER BY COUNT(*) DESC ensures the items with the most quantity are at the top
+        sql = "SELECT rat_name, COUNT(*) FROM rats WHERE user_id = ? GROUP BY rat_name ORDER BY COUNT(*) DESC"
+
+        # Execute the query, passing the user ID as a parameter
+        self.cursor.execute(sql, (user_id,))
+
+        # Fetch all results: Returns a list of tuples (('Item Name', count), ...)
+        my_rats = self.cursor.fetchall()
+
+        if not my_rats:
+            return await ctx.send(f"{ctx.author.mention}, you have no photos!")
+        
+        # Format the rat inventory for the discord embed
+        rat_list = []
+        num_of_rats = 0;
+        for (rat, count) in my_rats:
+            rat_list.append(f"• **{rat}** x{count}")
+            num_of_rats += count
+
+        # Create the embed
+        embed = discord.Embed(
+            title=f"🎒 {ctx.author.name}'s Photo Board",
+            description="\n".join(rat_list), # Joins the list items into a clean block of text
+            color=discord.Color.gold()
+        )
+        embed.set_footer(text=f"Total Photos: {num_of_rats}")
+        await ctx.send(embed=embed)
 
     def cog_unload(self):
         """Ensures the background task is stopped when the cog is removed."""
