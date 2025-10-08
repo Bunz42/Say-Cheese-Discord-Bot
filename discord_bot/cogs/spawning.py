@@ -1,34 +1,15 @@
+'''This cog handles the spawning of collectible rats in a designated Discord channel.
+It includes logic for random spawning based on rarity, user interaction to capture
+the rats, and viewing the user's collection.'''
+
 # cogs/spawning.py
-from discord.ext import commands, tasks
+from discord.ext import commands
 import discord 
 import random
 import datetime
+from data.rat_data import COLLECTIBLE_DATA
 
 SPAWN_CHANNEL_ID = 1423174402673086467  # <<< You MUST replace this number!
-
-COLLECTIBLE_DATA = [
-    {
-        "name": "Disco Rat",
-        "rarity": "Rare",
-        "image_url": "", 
-        "spawn_rate": 0, #temp
-        "drop": (50, 150) # min and max currency drop when caught
-    },
-    {
-        "name": "Quantum Rat",
-        "rarity": "Legendary",
-        "image_url": "", 
-        "spawn_rate": 0, #temp
-        "drop": (200, 500) # min and max currency drop when caught
-    },
-    {
-        "name": "Rat",
-        "rarity": "Common",
-        "image_url": "", 
-        "spawn_rate": 0, #temp
-        "drop": (10, 50) # min and max currency drop when caught
-    }
-]
 
 class Spawning(commands.Cog):
     def __init__(self, bot):
@@ -39,6 +20,7 @@ class Spawning(commands.Cog):
         self.cursor = bot.db_cursor
 
         self.active_rat = None # This variable can track the rat that's currently spawned in the chat
+        self.rat_spawner_id = None # Variable to track who spawned the rat
 
         self.message_count = 0 # Tracks the number of messages sent in the channel
         self.spawn_threshold = 1 # Number of messages before a rat spawns
@@ -78,7 +60,8 @@ class Spawning(commands.Cog):
         
         # Check if the channel exists before trying to send a message
         if channel:
-            collectible = random.choice(COLLECTIBLE_DATA)
+            # Weighted random selection of a rat to spawn based on its rarity (0.5% Legendary, 5% Elite, 94.5% Common)
+            collectible = self.select_rat_by_rarity()
 
             self.active_rat = collectible # Track the currently spawned rat
 
@@ -94,6 +77,26 @@ class Spawning(commands.Cog):
 
             # Send a test message asynchronously
             await channel.send(embed=embed)
+    
+    def select_rat_by_rarity(self):
+        '''Selects a random rat from the COLLECTIBLE_DATA based on the specified rarity.'''
+        # Generate a random real number between 0 and 100
+        roll = random.random() * 100
+
+        # 0.5% chance for Legendary
+        if roll <= 0.5:
+            legendary_rats = [rat for rat in COLLECTIBLE_DATA if rat['rarity'] == 'Legendary']
+            return random.choice(legendary_rats) if legendary_rats else None
+        
+        # 5% chance for Elite (0.5% - 5.5% range to exclude overlap with Legendary)
+        elif roll <= 5.5:
+            elite_rats = [rat for rat in COLLECTIBLE_DATA if rat['rarity'] == 'Elite']
+            return random.choice(elite_rats) if elite_rats else None
+        
+        # 94.5% chance for Common
+        else:
+            common_rats = [rat for rat in COLLECTIBLE_DATA if rat['rarity'] == 'Common']
+            return random.choice(common_rats) if common_rats else None
 
     # ------------------------------------- COLLECTIBLE CAPTURE LOGIC ------------------------------------- #
 
@@ -108,6 +111,13 @@ class Spawning(commands.Cog):
         # TODO: Perform a check to see if the user is in the correct channel (omit for now)
         if ctx.channel.id != SPAWN_CHANNEL_ID:
             await ctx.send(f"{ctx.author.mention} You can only capture rats in the designated channel!")
+            return
+        
+        # If the rat was spawned by a user, only that user can capture it
+        if self.rat_spawner_id is not None and ctx.author.id != self.rat_spawner_id:
+            spawner = await self.bot.fetch_user(self.rat_spawner_id)
+            spawner_name = spawner.display_name if spawner else "someone else"
+            await ctx.send(f"{ctx.author.mention} You can't capture this rat! It was spawned by {spawner_name}.")
             return
 
         caught_rat = self.active_rat  # The rat the user is trying to catch
@@ -131,7 +141,7 @@ class Spawning(commands.Cog):
         self.active_rat = None  # Reset the active rat since it has been attempted to be captured
 
     # ------------------------------------- COLLECTIBLE INVENTORY ------------------------------------- #
-
+    
     # Command to view the user's captured rats
     @commands.command(name='myrats', aliases=['rats'])
     async def view_rats(self, ctx):
@@ -166,6 +176,78 @@ class Spawning(commands.Cog):
             color=discord.Color.gold()
         )
         embed.set_footer(text=f"Total Photos: {num_of_rats}")
+        await ctx.send(embed=embed)
+
+    # ------------------------------------- RAT EQUIPMENT SYSTEM ------------------------------------- #
+
+    @commands.command(name='equip')
+    async def equip_rat(self, ctx, *, rat_name=None):
+        '''Equip one of your captured rats.'''
+        
+        if rat_name is None:
+            return await ctx.send(f"{ctx.author.mention} Please specify which rat to equip! Example: `sc~equip Disco Rat`")
+        
+        user_id = ctx.author.id
+        
+        # Check if user has this rat in their collection
+        self.cursor.execute("SELECT COUNT(*) FROM rats WHERE user_id = ? AND rat_name = ?", 
+                           (user_id, rat_name))
+        rat_count = self.cursor.fetchone()[0]
+        
+        if rat_count == 0:
+            return await ctx.send(f"{ctx.author.mention} You don't have any photos of '{rat_name}'! Use `sc~myrats` to see your collection.")
+        
+        # Get the rat data for the embed
+        rat_data = None
+        for rat in COLLECTIBLE_DATA:
+            if rat['name'].lower() == rat_name.lower():
+                rat_data = rat
+                rat_name = rat['name']  # Use the correct capitalization
+                break
+        
+        if rat_data is None:
+            return await ctx.send(f"{ctx.author.mention} '{rat_name}' is not a valid rat name!")
+        
+        # Check if user already has this rat equipped
+        self.cursor.execute("SELECT rat_name FROM equipped_rats WHERE user_id = ?", (user_id,))
+        current_equipped = self.cursor.fetchone()
+        
+        if current_equipped and current_equipped[0].lower() == rat_name.lower():
+            return await ctx.send(f"{ctx.author.mention} You already have **{rat_name}** equipped!")
+        
+        # Equip the new rat (replace existing equipped rat if any)
+        equipped_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        if current_equipped:
+            # Update existing equipped rat
+            self.cursor.execute("UPDATE equipped_rats SET rat_name = ?, equipped_at = ? WHERE user_id = ?", 
+                               (rat_name, equipped_time, user_id))
+            action = "switched to"
+        else:
+            # Insert new equipped rat record
+            self.cursor.execute("INSERT INTO equipped_rats (user_id, rat_name, equipped_at) VALUES (?, ?, ?)", 
+                               (user_id, rat_name, equipped_time))
+            action = "equipped"
+        
+        self.conn.commit()
+        
+        # Create success embed
+        from data.rat_data import RARITY_COLORS
+        color = discord.Color(RARITY_COLORS.get(rat_data['rarity'], 0x0099ff))
+        
+        embed = discord.Embed(
+            title="✨ Rat Equipped!",
+            description=f"You have {action} **{rat_name}**!\n*This rat is now brought to life and ready for action.*",
+            color=color
+        )
+        
+        if rat_data['image_url']:
+            embed.set_thumbnail(url=rat_data['image_url'])
+        
+        embed.add_field(name="📊 Rarity", value=rat_data['rarity'], inline=True)
+        embed.add_field(name="📸 Photos Owned", value=f"{rat_count}", inline=True)
+        embed.set_footer(text="Use 'sc~equipped' to see your currently equipped rat!")
+        
         await ctx.send(embed=embed)
 
 # ------------------------------------- COG SETUP ------------------------------------- #
