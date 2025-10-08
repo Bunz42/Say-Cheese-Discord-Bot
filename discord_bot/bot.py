@@ -85,6 +85,8 @@ async def on_ready():
         await bot.load_extension('cogs.economy')
         # Load the info Cog
         await bot.load_extension('cogs.info')
+        # Load the utility Cog
+        await bot.load_extension('cogs.utility')
         print("All Cogs loaded successfully!")
     except Exception as e:
         print(f"Failed to load a Cog: {e}")
