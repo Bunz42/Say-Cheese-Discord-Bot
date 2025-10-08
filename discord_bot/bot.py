@@ -31,6 +31,25 @@ CREATE TABLE IF NOT EXISTS economy (
 )
 ''')
 
+# Creating the shop table in rat_collection.db
+db_cursor.execute('''
+CREATE TABLE IF NOT EXISTS shop (
+    item_name TEXT PRIMARY KEY,
+    price INTEGER,
+    description TEXT,
+    item_type TEXT,
+    effect_value INTEGER
+)
+''')
+
+db_cursor.execute('''
+CREATE TABLE IF NOT EXISTS equipped_rats (
+    user_id INTEGER,
+    rat_name TEXT,
+    equipped_at TEXT
+)
+''')
+
 # Adding the last_claim_time column to the economy table
 try:
     db_cursor.execute("ALTER TABLE economy ADD COLUMN last_claim_time TEXT DEFAULT '2000-01-01 00:00:00'")
@@ -64,6 +83,8 @@ async def on_ready():
         await bot.load_extension('cogs.spawning')
         # Load the economy Cog
         await bot.load_extension('cogs.economy')
+        # Load the info Cog
+        await bot.load_extension('cogs.info')
         print("All Cogs loaded successfully!")
     except Exception as e:
         print(f"Failed to load a Cog: {e}")
