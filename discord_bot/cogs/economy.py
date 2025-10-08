@@ -1,3 +1,5 @@
+'''This cog handles user economy features such as currency balance, daily rewards, and inventory management.'''
+
 from discord.ext import commands
 import discord
 import datetime # Used to check 24-hour cooldown on the daily cmd.
