@@ -33,7 +33,9 @@ class Utility(commands.Cog):
         embed.add_field(
             name="💰 **Economy**",
             value="`sc~daily` - Claim daily tokens\n"
-                    "`sc~balance` - Check your token balance",
+                    "`sc~balance` - Check your token balance\n"
+                    "`sc~market-list <rat name>` - Lists your rat on the market\n"
+                    "`sc~market` - View the rat market",
             inline=False
         )
 
