@@ -22,7 +22,7 @@ class Utility(commands.Cog):
             name="📸 **Rat Collection**",
             value="`sc~capture` - Capture a spawned rat\n"
                     "`sc~myrats` - View your photo collection\n"
-                    "`sc~equip <rat name>` - Equip a rat\n"
+                    "`sc~equip <rat number>` - Equip a rat\n"
                     "`sc~equipped` - View equipped rat\n"
                     "`sc~unequip` - Unequip current rat\n"
                     "`sc~info <rat name>` - Get rat information",
