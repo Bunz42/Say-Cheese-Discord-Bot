@@ -13,7 +13,7 @@ class RatInfo(commands.Cog):
     # ------------------------------------- RAT INFO COMMAND ------------------------------------- #
     @commands.command(name='info')
     async def rat_info(self, ctx, *, rat_name=None):
-        '''Display detailed information about a specific rat.'''
+        '''Display detailed information about the currently equipped rat.'''
         
         if rat_name is None:
             # Show available rats if no name is provided
