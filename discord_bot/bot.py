@@ -17,9 +17,12 @@ db_cursor = db_connection.cursor()
 # Create a table to store captured rats in rat_collection.db
 db_cursor.execute('''
 CREATE TABLE IF NOT EXISTS rats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     rat_name TEXT,
-    captured_at TEXT
+    level INTEGER DEFAULT 1,
+    captured_at TEXT,
+    equipped INTEGER DEFAULT 0
 )
 ''')
 
@@ -39,14 +42,6 @@ CREATE TABLE IF NOT EXISTS shop (
     description TEXT,
     item_type TEXT,
     effect_value INTEGER
-)
-''')
-
-db_cursor.execute('''
-CREATE TABLE IF NOT EXISTS equipped_rats (
-    user_id INTEGER,
-    rat_name TEXT,
-    equipped_at TEXT
 )
 ''')
 
