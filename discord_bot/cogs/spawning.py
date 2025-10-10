@@ -128,8 +128,8 @@ class Spawning(commands.Cog):
         item_name = caught_rat['name']
 
         # Handles adding the rat into the user's rat database
-        sql = "INSERT INTO rats (user_id, rat_name, captured_at) VALUES (?, ?, ?)"
-        self.cursor.execute(sql, (user_id, item_name, caught_time))
+        sql = "INSERT INTO rats (user_id, rat_name, level, captured_at) VALUES (?, ?, ?, ?)"
+        self.cursor.execute(sql, (user_id, item_name, 1, caught_time))
 
         # When user captures a rat, they also get a small random amount of currency (a "drop")
         reward = random.randint(*caught_rat['drop'])  # Random reward in a range defined by the rat's drop range
@@ -149,25 +149,24 @@ class Spawning(commands.Cog):
 
         user_id = ctx.author.id
 
-        # SQL Query: Selects item name and counts them, filtered by user ID
-        # ORDER BY COUNT(*) DESC ensures the items with the most quantity are at the top
-        sql = "SELECT rat_name, COUNT(*) FROM rats WHERE user_id = ? GROUP BY rat_name ORDER BY COUNT(*) DESC"
+        # SQL Query: Selects all rats for the user, ordered by capture date (ID represents capture order)
+        sql = "SELECT id, rat_name, level FROM rats WHERE user_id = ? ORDER BY id"
 
         # Execute the query, passing the user ID as a parameter
         self.cursor.execute(sql, (user_id,))
 
-        # Fetch all results: Returns a list of tuples (('Item Name', count), ...)
+        # Fetch all results: Returns a list of tuples ((id, 'Rat Name', level), ...)
         my_rats = self.cursor.fetchall()
 
         if not my_rats:
             return await ctx.send(f"{ctx.author.mention}, you have no photos!")
         
+        total_rats = len(my_rats)
+        
         # Format the rat inventory for the discord embed
         rat_list = []
-        num_of_rats = 0;
-        for (rat, count) in my_rats:
-            rat_list.append(f"• **{rat}** x{count}")
-            num_of_rats += count
+        for i, (rat_id, rat_name, level) in enumerate(my_rats, 1):
+            rat_list.append(f"{rat_name} | Level: {level} | Number: {i}")
 
         # Create the embed
         embed = discord.Embed(
@@ -175,78 +174,70 @@ class Spawning(commands.Cog):
             description="\n".join(rat_list), # Joins the list items into a clean block of text
             color=discord.Color.gold()
         )
-        embed.set_footer(text=f"Total Photos: {num_of_rats}")
+        embed.set_footer(text=f"Total Photos: {total_rats}")
         await ctx.send(embed=embed)
 
     # ------------------------------------- RAT EQUIPMENT SYSTEM ------------------------------------- #
 
     @commands.command(name='equip')
-    async def equip_rat(self, ctx, *, rat_name=None):
-        '''Equip one of your captured rats.'''
-        
-        if rat_name is None:
-            return await ctx.send(f"{ctx.author.mention} Please specify which rat to equip! Example: `sc~equip Disco Rat`")
+    async def equip_rat(self, ctx, rat_number: int = None):
+        '''Equips a captured rat by its number in the rat inventory.'''
+
+        if rat_number is None:
+            return await ctx.send(f"{ctx.author.mention} Please specify which photo to equip! Use `sc~myrats` to see your photos and their numbers! Example: `sc~equip 5`")
         
         user_id = ctx.author.id
         
         # Check if user has this rat in their collection
-        self.cursor.execute("SELECT COUNT(*) FROM rats WHERE user_id = ? AND rat_name = ?", 
-                           (user_id, rat_name))
-        rat_count = self.cursor.fetchone()[0]
+        self.cursor.execute("SELECT id, rat_name, level FROM rats WHERE user_id = ? ORDER BY id", (user_id,))
+        my_rats = self.cursor.fetchall()
+
+        if not my_rats:
+            return await ctx.send(f"{ctx.author.mention} You don't have any photos! Catch some first using `sc~capture`!")
         
-        if rat_count == 0:
-            return await ctx.send(f"{ctx.author.mention} You don't have any photos of '{rat_name}'! Use `sc~myrats` to see your collection.")
+        if rat_number < 1 or rat_number > len(my_rats):
+            return await ctx.send(f"{ctx.author.mention} Invalid photo number! You have {len(my_rats)} rats. Use `sc~myrats` to see your photos.")
+
+        # Get the rat at the specified number
+        rat_id, rat_name, level = my_rats[rat_number - 1]
+
+        # Check if user already has this rat equipped
+        self.cursor.execute("SELECT equipped FROM rats WHERE user_id = ?", (user_id,))
+        is_equipped = self.cursor.fetchone()[0]
         
-        # Get the rat data for the embed
+        if is_equipped:
+            return await ctx.send(f"{ctx.author.mention} **{rat_name}** (Number: {rat_number}) is already equipped!")
+        
         rat_data = None
         for rat in COLLECTIBLE_DATA:
             if rat['name'].lower() == rat_name.lower():
                 rat_data = rat
-                rat_name = rat['name']  # Use the correct capitalization
                 break
         
         if rat_data is None:
-            return await ctx.send(f"{ctx.author.mention} '{rat_name}' is not a valid rat name!")
-        
-        # Check if user already has this rat equipped
-        self.cursor.execute("SELECT rat_name FROM equipped_rats WHERE user_id = ?", (user_id,))
-        current_equipped = self.cursor.fetchone()
-        
-        if current_equipped and current_equipped[0].lower() == rat_name.lower():
-            return await ctx.send(f"{ctx.author.mention} You already have **{rat_name}** equipped!")
-        
-        # Equip the new rat (replace existing equipped rat if any)
-        equipped_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        if current_equipped:
-            # Update existing equipped rat
-            self.cursor.execute("UPDATE equipped_rats SET rat_name = ?, equipped_at = ? WHERE user_id = ?", 
-                               (rat_name, equipped_time, user_id))
-            action = "switched to"
-        else:
-            # Insert new equipped rat record
-            self.cursor.execute("INSERT INTO equipped_rats (user_id, rat_name, equipped_at) VALUES (?, ?, ?)", 
-                               (user_id, rat_name, equipped_time))
-            action = "equipped"
-        
+            return await ctx.send(f"{ctx.author.mention} Error: Rat data for **{rat_name}** not found!")
+
+        # Unequip any currently equipped rat
+        self.cursor.execute("UPDATE rats SET equipped = 0 WHERE user_id = ?", (user_id,))
+        self.cursor.execute("UPDATE rats SET equipped = 1 WHERE id = ?", (rat_id,))
         self.conn.commit()
-        
+
         # Create success embed
         from data.rat_data import RARITY_COLORS
         color = discord.Color(RARITY_COLORS.get(rat_data['rarity'], 0x0099ff))
         
         embed = discord.Embed(
-            title="✨ Rat Equipped!",
-            description=f"You have {action} **{rat_name}**!\n*This rat is now brought to life and ready for action.*",
+            title="📸 Photo Equipped!",
+            description=f"You have equipped **{rat_name}**!\n*The rat in this photo has been brought to life!*",
             color=color
         )
         
         if rat_data['image_url']:
             embed.set_thumbnail(url=rat_data['image_url'])
         
-        embed.add_field(name="📊 Rarity", value=rat_data['rarity'], inline=True)
-        embed.add_field(name="📸 Photos Owned", value=f"{rat_count}", inline=True)
-        embed.set_footer(text="Use 'sc~equipped' to see your currently equipped rat!")
+        embed.add_field(name="✨ Rarity", value=rat_data['rarity'], inline=True)
+        embed.add_field(name="Level", value=f"{level}", inline=True)
+        embed.set_footer(text="Use 'sc~info' to see your currently equipped rat!")
         
         await ctx.send(embed=embed)
 
